@@ -58,6 +58,6 @@ class UserApprovalController extends Controller
 
         $user->sendEmailVerificationNotification();
 
-        return response()->json(['message' => 'Verification email resent to ' . $user->email . '.']);
+        return response()->json(['message' => 'Verification email resent to '.$user->email.'.']);
     }
 }
