@@ -25,7 +25,7 @@ class GoogleAuthController extends Controller
         try {
             $googleUser = Socialite::driver('google')->stateless()->user();
         } catch (\Exception $e) {
-            return redirect(config('app.frontend_url') . '/login?google_error=1');
+            return redirect(config('app.frontend_url').'/login?google_error=1');
         }
 
         $user = User::where('google_id', $googleUser->getId())
@@ -45,7 +45,7 @@ class GoogleAuthController extends Controller
             ]);
 
             if (class_exists(GoogleAccountVerifiedNotification::class)) {
-                $user->notify(new GoogleAccountVerifiedNotification());
+                $user->notify(new GoogleAccountVerifiedNotification);
             }
         } elseif (! $user->google_id) {
             $wasUnverified = is_null($user->email_verified_at);
@@ -57,7 +57,7 @@ class GoogleAuthController extends Controller
             ]);
 
             if ($wasUnverified && class_exists(GoogleAccountVerifiedNotification::class)) {
-                $user->notify(new GoogleAccountVerifiedNotification());
+                $user->notify(new GoogleAccountVerifiedNotification);
             }
         }
 
@@ -76,13 +76,14 @@ class GoogleAuthController extends Controller
                 ->plainTextToken;
 
             return redirect(
-                config('app.frontend_url') . '/complete-profile?token=' . $tempToken
+                config('app.frontend_url').'/complete-profile?token='.$tempToken
             );
         }
 
         if ($user->status === 'pending') {
             $statusParam = $wasRejected ? 'resubmitted' : 'pending';
-            return redirect(config('app.frontend_url') . '/login?google_status=' . $statusParam);
+
+            return redirect(config('app.frontend_url').'/login?google_status='.$statusParam);
         }
 
         $expiresAt = now()->addDay();
@@ -99,47 +100,47 @@ class GoogleAuthController extends Controller
 
         return redirect(
             config('app.frontend_url')
-            . '/oauth-callback?token=' . $tokenResult->plainTextToken
-            . '&expires_at=' . $expiresAt->toIso8601String()
+            .'/oauth-callback?token='.$tokenResult->plainTextToken
+            .'&expires_at='.$expiresAt->toIso8601String()
         );
     }
 
-public function completeProfile(Request $request)
-{
-    $user = $request->user();
+    public function completeProfile(Request $request)
+    {
+        $user = $request->user();
 
-    if (! $request->user()->currentAccessToken()->can('profile:complete')) {
-        return response()->json(['message' => 'Invalid or expired request.'], 403);
+        if (! $request->user()->currentAccessToken()->can('profile:complete')) {
+            return response()->json(['message' => 'Invalid or expired request.'], 403);
+        }
+
+        $request->validate([
+            'username' => ['required', 'string', 'max:50', 'alpha_dash', 'unique:users,username,'.$user->id],
+            'first_name' => ['required', 'string', 'max:255'],
+            'middle_name' => ['nullable', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'mobile_number' => ['required', 'string', 'max:20'],
+            'birthdate' => ['required', 'date', 'before:today'],
+            'gender' => ['required', Rule::in(['male', 'female', 'other', 'prefer_not_to_say'])],
+            'address' => ['required', 'string', 'max:255'],
+            'role' => ['required', 'in:admin,staff'],
+            'password' => ['required', 'confirmed', Password::min(8)],
+        ]);
+
+        $user->update([
+            'username' => $request->username,
+            'first_name' => $request->first_name,
+            'middle_name' => $request->middle_name,
+            'last_name' => $request->last_name,
+            'mobile_number' => $request->mobile_number,
+            'birthdate' => $request->birthdate,
+            'gender' => $request->gender,
+            'address' => $request->address,
+            'role' => $request->role,
+            'password' => Hash::make($request->password),
+        ]);
+
+        $request->user()->currentAccessToken()->delete();
+
+        return response()->json(['message' => 'Profile completed. Your account is now awaiting admin approval.']);
     }
-
-    $request->validate([
-        'username' => ['required', 'string', 'max:50', 'alpha_dash', 'unique:users,username,' . $user->id],
-        'first_name' => ['required', 'string', 'max:255'],
-        'middle_name' => ['nullable', 'string', 'max:255'],
-        'last_name' => ['required', 'string', 'max:255'],
-        'mobile_number' => ['required', 'string', 'max:20'],
-        'birthdate' => ['required', 'date', 'before:today'],
-        'gender' => ['required', Rule::in(['male', 'female', 'other', 'prefer_not_to_say'])],
-        'address' => ['required', 'string', 'max:255'],
-        'role' => ['required', 'in:admin,staff'],
-        'password' => ['required', 'confirmed', Password::min(8)],
-    ]);
-
-    $user->update([
-        'username' => $request->username,
-        'first_name' => $request->first_name,
-        'middle_name' => $request->middle_name,
-        'last_name' => $request->last_name,
-        'mobile_number' => $request->mobile_number,
-        'birthdate' => $request->birthdate,
-        'gender' => $request->gender,
-        'address' => $request->address,
-        'role' => $request->role,
-        'password' => Hash::make($request->password),
-    ]);
-
-    $request->user()->currentAccessToken()->delete();
-
-    return response()->json(['message' => 'Profile completed. Your account is now awaiting admin approval.']);
-}
 }

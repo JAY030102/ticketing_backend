@@ -1,11 +1,11 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\AccountLifecycleController;
+use App\Http\Controllers\Api\Admin\UserApprovalController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\EmailVerificationController;
-use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\GoogleAuthController;
-use App\Http\Controllers\Api\Admin\UserApprovalController;
-use App\Http\Controllers\Api\Admin\AccountLifecycleController;
+use App\Http\Controllers\Api\PasswordResetController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -27,7 +27,7 @@ Route::post('/reset-password', [PasswordResetController::class, 'resetPassword']
     ->middleware('throttle:6,1');
 
 Route::post('/request-review', [AuthController::class, 'requestReview'])
-->middleware('throttle:6,1');
+    ->middleware('throttle:6,1');
 
 Route::get('/auth/google/redirect', [GoogleAuthController::class, 'redirect']);
 Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback']);
@@ -41,7 +41,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/sessions', function (Request $request) {
         return $request->user()->loginSessions()->latest('login_at')->paginate(10);
     });
-
 
     Route::middleware('admin')->prefix('admin')->group(function () {
         Route::get('/users/pending', [UserApprovalController::class, 'pending']);

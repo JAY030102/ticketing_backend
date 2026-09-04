@@ -29,7 +29,7 @@ class CustomVerifyEmail extends BaseVerifyEmail
 
         return (new MailMessage)
             ->subject('Verify Your Email Address')
-            ->greeting('Hello ' . $notifiable->name . '!')
+            ->greeting('Hello '.$notifiable->name.'!')
             ->line('Please click the button below to verify your email address.')
             ->action('Verify Email Address', $url)
             ->line('This verification link will expire in 60 minutes.')
