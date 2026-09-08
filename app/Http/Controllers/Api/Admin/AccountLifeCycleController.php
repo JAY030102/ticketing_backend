@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ArchivedUser;
 use App\Models\User;
+use App\Notifications\AccountStatusUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -29,12 +30,18 @@ class AccountLifecycleController extends Controller
 
         // Revoke all active tokens so a suspended user is logged out immediately
         $user->tokens()->delete();
+        $user->notify(new AccountStatusUpdated('suspended'));
 
-        return response()->json(['message' => 'Account Suspended.', 'user' => $user]);
+        return response()->json(['message' => 'Account Suspended.', 'user' => $user->fresh()]);
     }
 
     public function reactivate(Request $request, User $user)
     {
+        // Terminated accounts had their data moved to archived_users — restore it.
+        if ($user->account_status === 'terminated') {
+            return $this->restoreFromArchive($request, $user);
+        }
+
         $user->update([
             'account_status' => 'active',
             'suspended_at' => null,
@@ -42,7 +49,9 @@ class AccountLifecycleController extends Controller
             'suspension_reason' => null,
         ]);
 
-        return response()->json(['message' => 'Account Reactivated.', 'user' => $user]);
+        $user->notify(new AccountStatusUpdated('active'));
+
+        return response()->json(['message' => 'Account Reactivated.', 'user' => $user->fresh()]);
     }
 
     public function terminate(Request $request, User $user)
@@ -55,10 +64,21 @@ class AccountLifecycleController extends Controller
             return response()->json(['message' => 'You Cannot Terminate Your Own Account.'], 422);
         }
 
-        DB::transaction(function () use ($request, $user) {
-            ArchivedUser::create([
+        $archivedUser = DB::transaction(function () use ($request, $user) {
+            $validColumns = collect(DB::select('SHOW COLUMNS FROM users'))
+                ->pluck('Field')
+                ->all();
+
+            // Snapshot only real columns — exclude any accessor/appended
+            // attributes (e.g. a computed avatar_url) so this stays a
+            // faithful, restorable copy of the actual row.
+            $fullSnapshot = collect($user->toArray())
+                ->only($validColumns)
+                ->toArray();
+
+            $archivedUser = ArchivedUser::create([
                 'original_user_id' => $user->id,
-                'user_data' => $user->toArray(),
+                'user_data' => $fullSnapshot,
                 'termination_reason' => $request->reason,
                 'terminated_by' => $request->user()->id,
                 'terminated_at' => now(),
@@ -66,10 +86,65 @@ class AccountLifecycleController extends Controller
 
             $user->tokens()->delete();
             $user->loginSessions()->delete();
-            $user->delete();
+
+            // Keep the complete row visible to administrators while making
+            // the account inactive. The archive remains the restoration copy.
+            $user->forceFill(['account_status' => 'terminated'])->save();
+
+            return $archivedUser->load('terminatedBy:id,name,email');
         });
 
-        return response()->json(['message' => 'Account Terminated and Archived.']);
+        $user->notify(new AccountStatusUpdated('terminated'));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Account Terminated and archived successfully.',
+            'user' => $user->fresh(),
+            'archived_user' => $archivedUser,
+        ]);
+    }
+
+    /**
+     * Restore the most recent un-restored archive snapshot back onto the
+     * live users row, then mark that archive record as restored.
+     */
+    private function restoreFromArchive(Request $request, User $user)
+    {
+        $archive = ArchivedUser::where('original_user_id', $user->id)
+            ->whereNull('restored_at')
+            ->latest('terminated_at')
+            ->first();
+
+        if (! $archive) {
+            return response()->json([
+                'message' => 'No archived data found to restore for this account.',
+            ], 422);
+        }
+
+        DB::transaction(function () use ($user, $archive) {
+            $validColumns = collect(DB::select('SHOW COLUMNS FROM users'))
+                ->pluck('Field')
+                ->all();
+
+            $restoreData = collect($archive->user_data)
+                ->only($validColumns)
+                ->except(['id', 'created_at', 'updated_at'])
+                ->toArray();
+
+            $restoreData['account_status'] = 'active';
+
+            $user->forceFill($restoreData)->save();
+
+            $archive->update(['restored_at' => now()]);
+        });
+
+        $user->notify(new AccountStatusUpdated('active'));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Account restored from archive and reactivated.',
+            'user' => $user->fresh(),
+        ]);
     }
 
     public function listArchived(Request $request)

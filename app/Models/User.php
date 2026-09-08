@@ -124,6 +124,22 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->account_status === 'terminated';
     }
 
+    protected $appends = ['avatar_url'];
+
+    public function getAvatarUrlAttribute(): ?string
+    {
+    if (! $this->avatar) {
+        return null;
+    }
+
+    // Google avatars are already full URLs; uploaded ones are relative storage paths
+    if (str_starts_with($this->avatar, 'http')) {
+        return $this->avatar;
+    }
+
+    return asset('storage/' . $this->avatar);
+}
+
     public function sendEmailVerificationNotification()
     {
         $this->notify(new CustomVerifyEmail);

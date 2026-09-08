@@ -100,7 +100,14 @@ class AuthController extends Controller
             ], 403);
         }
 
-        // account_status === 'terminated' never reaches here — terminated users no longer exist in the users table
+        if ($user->account_status === 'terminated') {
+            RateLimiter::clear($key);
+
+            return response()->json([
+                'message' => 'Your account has been terminated. Contact an administrator for details.',
+                'account_lifecycle' => 'terminated',
+            ], 403);
+        }
 
         RateLimiter::clear($key);
 

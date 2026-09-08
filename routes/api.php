@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\PasswordResetController;
+use App\Http\Controllers\Api\Admin\UserManagementController;
+use App\Http\Controllers\Api\ProfileController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -38,13 +40,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/complete-profile', [GoogleAuthController::class, 'completeProfile']);
 
+    Route::get('/profile', [ProfileController::class, 'show']);
+    Route::put('/profile', [ProfileController::class, 'update']);
+    Route::put('/profile/password', [ProfileController::class, 'updatePassword']);
+    Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar']);
+    Route::delete('/profile/avatar', [ProfileController::class, 'removeAvatar']);
+
     Route::get('/sessions', function (Request $request) {
         return $request->user()->loginSessions()->latest('login_at')->paginate(10);
     });
 
-    Route::middleware('admin')->prefix('admin')->group(function () {
+    Route::middleware('superadmin')->prefix('admin')->group(function () {
         Route::get('/users/pending', [UserApprovalController::class, 'pending']);
-        Route::get('/users', [UserApprovalController::class, 'index']);
+        Route::get('/users', [UserManagementController::class, 'index']);
+        Route::delete('/users/{user}', [UserManagementController::class, 'destroy']);
         Route::post('/users/{user}/approve', [UserApprovalController::class, 'approve']);
         Route::post('/users/{user}/reject', [UserApprovalController::class, 'reject']);
         Route::post('/users/{user}/resend-verification', [UserApprovalController::class, 'resendVerification']);
@@ -54,4 +63,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/users/{user}/terminate', [AccountLifecycleController::class, 'terminate']);
         Route::get('/archived-users', [AccountLifecycleController::class, 'listArchived']);
     });
+
+    Route::middleware(['auth:sanctum', 'superadmin'])->prefix('superadmin')->group(function () {
+    Route::get('/users', [UserManagementController::class, 'index']);
+    Route::get('/users/{user}', [UserManagementController::class, 'show']);
+    Route::post('/users', [UserManagementController::class, 'store']);
+    Route::put('/users/{user}', [UserManagementController::class, 'update']);
+    Route::delete('/users/{user}', [UserManagementController::class, 'destroy']);
+});
 });
